@@ -29,8 +29,9 @@ defmodule Przma.Accounts.User do
     # field :last_login_at, :utc_datetime
     # field :password_changed_at, :utc_datetime
     # field :email_verified_at, :utc_datetime
+    has_many :sessions, Przma.Sessions.Session, foreign_key: :user_id
 
-    # timestamps(type: :utc_datetime, inserted_at: :created_at, updated_at: :updated_at)
+    timestamps(type: :utc_datetime, inserted_at: :created_at, updated_at: :updated_at)
   end
 
   @doc false

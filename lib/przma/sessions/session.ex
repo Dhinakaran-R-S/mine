@@ -7,7 +7,7 @@ defmodule Przma.Sessions.Session do
   @foreign_key_type :binary_id
   @schema_prefix "auth"
   schema "sessions" do
-    field :user_id, :binary_id
+
     field :refresh_token, :string
     field :token_hash, :string
     field :status, :string
@@ -18,13 +18,18 @@ defmodule Przma.Sessions.Session do
     field :expires_at, :utc_datetime
     field :last_accessed_at, :utc_datetime
 
+    # belongs_to
+    belongs_to :user, Przma.Accounts.User,
+      references: :user_id,          # points to users.user_id
+      foreign_key: :user_id,
+      type: :binary_id
+
     timestamps(type: :utc_datetime, inserted_at: :created_at, updated_at: false)
   end
 
 def changeset(session, attrs) do
   session
   |> cast(attrs, [
-    :user_id,
     :refresh_token,
     :token_hash,
     :status,
@@ -36,6 +41,7 @@ def changeset(session, attrs) do
   ])
   |> validate_required([:user_id, :refresh_token, :token_hash, :status, :created_at])
   |> check_constraint(:refresh_token, name: :valid_refresh_token)
+  |> foreign_key_constraint(:user_id)
   |> put_default_device_info()
 end
 
