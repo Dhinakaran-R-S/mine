@@ -17,6 +17,11 @@ defmodule Przma.Accounts.User do
     field :password_hash, :string
     field :deleted_at, :utc_datetime
 
+
+    field :otp_code, :string
+    field :otp_expires_at, :utc_datetime
+    field :otp_used, :boolean, default: false
+
     # Add these essential fields from the second version
     field :is_active, :boolean, default: true
     field :is_verified, :boolean, default: false
@@ -43,6 +48,35 @@ defmodule Przma.Accounts.User do
     |> put_password_hash()
     |> validate_email()
     |> put_default_values()
+  end
+
+    @doc """
+  Changeset specifically for OTP updates
+  """
+  def otp_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:otp_code, :otp_expires_at, :otp_used])
+    |> validate_required([:otp_code, :otp_expires_at])
+  end
+
+  @doc """
+  Changeset for marking OTP as used
+  """
+  def mark_otp_used_changeset(user, attrs \\ %{}) do
+    user
+    |> cast(attrs, [:otp_used, :otp_code, :otp_expires_at])
+    |> put_change(:otp_used, true)
+    |> put_change(:otp_code, nil)
+    |> put_change(:otp_expires_at, nil)
+  end
+
+  @doc """
+  Changeset for verifying user
+  """
+  def verify_user_changeset(user, attrs \\ %{}) do
+    user
+    |> cast(attrs, [:is_verified])
+    |> put_change(:is_verified, true)
   end
 
   defp validate_email(changeset) do

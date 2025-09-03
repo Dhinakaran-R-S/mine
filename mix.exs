@@ -47,8 +47,8 @@ defmodule Przma.MixProject do
        app: false,
        compile: false,
        depth: 1},
-      {:swoosh, "~> 1.5"},
-      {:finch, "~> 0.13"},
+      {:swoosh, "~> 1.9"},
+      {:finch, "~> 0.20"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.26"},
@@ -57,8 +57,12 @@ defmodule Przma.MixProject do
       {:bandit, "~> 1.5"},
       {:ecto_sql, "~> 3.10"},
       {:postgrex, ">= 0.0.0"},
+      {:hackney, "~> 1.20"},
       {:pbkdf2_elixir, "~> 2.0"},
-      {:ecto_network, "~> 1.5"}
+      {:ecto_network, "~> 1.5"},
+      {:multipart, "~> 0.4.0"},
+      {:plug,"~> 1.15"}
+
     ]
   end
 

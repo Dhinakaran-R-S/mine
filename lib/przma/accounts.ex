@@ -171,4 +171,167 @@ defmodule Przma.Accounts do
     |> Ecto.Changeset.change(last_login_at: now)
     |> Repo.update()
   end
+
+  # ------------------------
+  # OTP Functions for User Table
+  # ------------------------
+
+  @doc """
+  Updates user with OTP code and expiry.
+  """
+  def update_user_otp(%User{} = user, code, expires_at) do
+    user
+    |> Ecto.Changeset.change(%{
+      otp_code: code,
+      otp_expires_at: expires_at,
+      otp_used: false
+    })
+    user
+    |> User.otp_changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Generates and updates user with new OTP.
+  """
+  def generate_and_update_otp(%User{} = user) do
+    code = :rand.uniform(899_999) + 100_000 |> Integer.to_string()
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+    otp_expires_at = DateTime.add(now, 60) # 5 minutes
+
+    update_user_otp(user, code, otp_expires_at)
+  end
+
+  @doc """
+  Verifies OTP for a user.
+  """
+  def verify_otp(user_id, otp_code) do
+    now = DateTime.utc_now()
+
+    case Repo.get(User, user_id) do
+      nil ->
+        {:error, "User not found"}
+
+      %User{otp_used: true} ->
+        {:error, "OTP already used"}
+
+      %User{otp_code: nil} ->
+        {:error, "No OTP generated"}
+
+      %User{otp_expires_at: nil} ->
+        {:error, "Invalid OTP"}
+
+      %User{otp_code: stored_code, otp_expires_at: otp_expires_at} = user ->
+        if stored_code == otp_code do
+          if DateTime.compare(otp_expires_at, now) == :gt do
+            {:ok, user}
+          else
+            {:error, "OTP has expired"}
+          end
+        else
+          {:error, "Invalid OTP code"}
+        end
+    end
+  end
+
+  @doc """
+  Marks OTP as used for a user.
+  """
+  def mark_otp_used(%User{} = user) do
+    user
+    |> Ecto.Changeset.change(%{
+      otp_used: true,
+      otp_code: nil,
+      otp_expires_at: nil
+    })
+    |> Repo.update()
+  end
+
+  @doc """
+  Verifies user account (sets is_verified to true).
+  """
+  def verify_user(%User{} = user) do
+    user
+    |> Ecto.Changeset.change(%{is_verified: true})
+    |> Repo.update()
+  end
+
+  def verify_user(user_id) when is_binary(user_id) do
+    case get_user(user_id) do
+      nil -> {:error, "User not found"}
+      user -> verify_user(user)
+    end
+  end
+
+  @doc """
+  Sends OTP email to user.
+  """
+  def send_otp_email(%User{} = user, otp_code) do
+    otp_url = "http://localhost:4000/otp_verify/#{user.user_id}"
+
+    # Create email using Swoosh
+    email =
+      Swoosh.Email.new()
+      |> Swoosh.Email.from({"Przma", "no-reply@przma.com"})
+      |> Swoosh.Email.to(user.email)
+      |> Swoosh.Email.subject("Your OTP Verification Code")
+      |> Swoosh.Email.html_body("""
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2>Welcome to Przma!</h2>
+        <p>Hello #{user.first_name},</p>
+        <p>Thank you for registering with Przma. To complete your account verification, please use the OTP code below:</p>
+
+        <div style="background-color: #f8f9fa; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px;">
+          <h1 style="color: #4f46e5; font-size: 32px; margin: 0; letter-spacing: 4px;">#{otp_code}</h1>
+        </div>
+
+        <p>Alternatively, you can verify your account by clicking the link below:</p>
+        <p><a href="#{otp_url}" style="color: #4f46e5;">Verify OTP</a></p>
+
+        <p><strong>This OTP expires in 5 minutes.</strong></p>
+
+        <p>If you didn't create an account with us, please ignore this email.</p>
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="color: #666; font-size: 14px;">
+          This is an automated message from Przma. Please do not reply to this email.
+        </p>
+      </div>
+      """)
+
+    # Send email - adjust this based on your mailer setup
+    case Przma.Mailer.deliver(email) do
+      {:ok, _response} ->
+        IO.puts("OTP email sent successfully to #{user.email}")
+        :ok
+      {:error, reason} ->
+        IO.puts("Failed to send OTP email: #{inspect(reason)}")
+        {:error, reason}
+    end
+  rescue
+    error ->
+      IO.puts("Error sending OTP email: #{inspect(error)}")
+      {:error, error}
+  end
+
+  @doc """
+  Resends OTP to user.
+  """
+  def resend_otp(%User{} = user) do
+    case generate_and_update_otp(user) do
+      {:ok, updated_user} ->
+        send_otp_email(updated_user, updated_user.otp_code)
+        {:ok, updated_user}
+
+      {:error, _changeset} = error ->
+        error
+    end
+  end
+
+  def resend_otp(user_id) when is_binary(user_id) do
+    case get_user(user_id) do
+      nil -> {:error, "User not found"}
+      user -> resend_otp(user)
+    end
+  end
 end

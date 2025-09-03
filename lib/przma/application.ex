@@ -8,6 +8,7 @@ defmodule Przma.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      {Finch, name: Swoosh.Finch},
       PrzmaWeb.Telemetry,
       Przma.Repo,
       {DNSCluster, query: Application.get_env(:przma, :dns_cluster_query) || :ignore},

@@ -244,24 +244,32 @@ defmodule PrzmaWeb.AuthLive do
 
     case Accounts.authenticate_user(email, password) do
       {:ok, user} ->
-        # Update last login
-        Accounts.update_last_login(user)
+        # Check if user is verified
+        if user.is_verified do
+          # Update last login
+          Accounts.update_last_login(user)
 
-        # Create simple session
-        case Sessions.create_user_session(user.user_id) do
-          {:ok, session} ->
-            # Redirect to welcome with token in URL
-            {:noreply,
-             socket
-             |> put_flash(:info, "Login successful!")
-             |> assign(:loading, false)
-             |> push_navigate(to: ~p"/welcome?token=#{session.refresh_token}&user_id=#{user.user_id}")}
+          # Create simple session
+          case Sessions.create_user_session(user.user_id) do
+            {:ok, session} ->
+              # Redirect to welcome with token in URL
+              {:noreply,
+               socket
+               |> put_flash(:info, "Login successful!")
+               |> assign(:loading, false)
+               |> push_navigate(to: ~p"/welcome?token=#{session.refresh_token}&user_id=#{user.user_id}")}
 
-          {:error, _changeset} ->
-            {:noreply,
-             socket
-             |> assign(:errors, ["Failed to create session. Please try again."])
-             |> assign(:loading, false)}
+            {:error, _changeset} ->
+              {:noreply,
+               socket
+               |> assign(:errors, ["Failed to create session. Please try again."])
+               |> assign(:loading, false)}
+          end
+        else
+          {:noreply,
+           socket
+           |> assign(:errors, ["Please verify your email before logging in. Check your email for the OTP."])
+           |> assign(:loading, false)}
         end
 
       {:error, :invalid_credentials} ->
@@ -283,13 +291,30 @@ defmodule PrzmaWeb.AuthLive do
     socket = assign(socket, :loading, true)
 
     case Accounts.create_user(params) do
-      {:ok, _user} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Registration successful! Please login.")
-         |> assign(:current_tab, "login")
-         |> assign(:errors, [])
-         |> assign(:loading, false)}
+      {:ok, user} ->
+        # Generate OTP code and expiry
+        code = :rand.uniform(899_999) + 100_000 |> Integer.to_string()
+        now = DateTime.truncate(DateTime.utc_now(), :second)
+        expires_at = DateTime.add(now, 60) # 5 minutes
+
+        # Update user with OTP
+        case Accounts.update_user_otp(user, code, expires_at) do
+          {:ok, updated_user} ->
+            # Send OTP email
+            Accounts.send_otp_email(updated_user, code)
+
+            {:noreply,
+             socket
+             |> put_flash(:info, "Account created! OTP sent to your email for verification.")
+             |> assign(:loading, false)
+             |> push_navigate(to: ~p"/otp_verify/#{user.user_id}")}
+
+          {:error, _changeset} ->
+            {:noreply,
+             socket
+             |> assign(:errors, ["Failed to generate OTP. Please try again."])
+             |> assign(:loading, false)}
+        end
 
       {:error, changeset} ->
         errors = extract_changeset_errors(changeset)
@@ -301,14 +326,16 @@ defmodule PrzmaWeb.AuthLive do
   end
 
   # Private helper functions
-  defp extract_changeset_errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Enum.reduce(opts, msg, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
+defp extract_changeset_errors(changeset) do
+  Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+    Enum.reduce(opts, msg, fn {key, value}, acc ->
+      String.replace(acc, "%{#{key}}", to_string(value))
     end)
-    |> Enum.map(fn {field, errors} ->
-      "#{Phoenix.Naming.humanize(field)} #{List.first(errors)}"
+  end)
+  |> Enum.flat_map(fn {field, errors} ->
+    Enum.map(errors, fn error ->
+      "#{Phoenix.Naming.humanize(field)} #{error}"
     end)
-  end
+  end)
+end
 end
