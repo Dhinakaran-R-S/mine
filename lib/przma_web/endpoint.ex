@@ -12,8 +12,20 @@ defmodule PrzmaWeb.Endpoint do
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options]],
-    longpoll: [connect_info: [session: @session_options]]
+    websocket: [
+      connect_info: [
+        session: @session_options,
+        x_headers: true,
+        peer_data: true
+          ]
+        ],
+    longpoll: [
+      connect_info: [
+        session: @session_options,
+        x_headers: true,
+        peer_data: true
+        ]
+      ]
 
   # Serve at "/" the static files from "priv/static" directory.
   #

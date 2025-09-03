@@ -1,11 +1,12 @@
+# lib/przma/accounts.ex
 defmodule Przma.Accounts do
   @moduledoc """
   The Accounts context for managing users.
   """
 
-  import Ecto.Query, warn: false # allows you to write queries like from u in User
-  alias Przma.Repo # lets you call Repo.insert, Repo.get etc. directly.
-  alias Przma.Accounts.User #refers to the User schema.
+  import Ecto.Query, warn: false
+  alias Przma.Repo
+  alias Przma.Accounts.User
 
   @doc """
   Returns the list of users (only active ones).
@@ -29,6 +30,13 @@ defmodule Przma.Accounts do
   """
   def get_user_by_email(email) when is_binary(email) do
     Repo.get_by(User, email: email)
+  end
+
+  @doc """
+  Gets a user by username.
+  """
+  def get_user_by_username(username) when is_binary(username) do
+    Repo.get_by(User, username: username)
   end
 
   @doc """
@@ -108,5 +116,59 @@ defmodule Przma.Accounts do
       :count,
       :user_id
     )
+  end
+
+  @doc """
+  Authenticates a user with email and password.
+  """
+  def authenticate_user(email, password) when is_binary(email) and is_binary(password) do
+    case get_user_by_email(email) do
+      nil ->
+        # Run password hash to prevent timing attacks
+        Pbkdf2.no_user_verify()
+        {:error, :invalid_credentials}
+
+      %User{deleted_at: deleted_at} when not is_nil(deleted_at) ->
+        {:error, :account_deactivated}
+
+      %User{} = user ->
+        if Pbkdf2.verify_pass(password, user.password_hash) do
+          {:ok, user}
+        else
+          {:error, :invalid_credentials}
+        end
+    end
+  end
+
+  @doc """
+  Validates password strength.
+  """
+  def validate_password(password) when is_binary(password) do
+    cond do
+      String.length(password) < 8 ->
+        {:error, "Password must be at least 8 characters long"}
+
+      not String.match?(password, ~r/[A-Z]/) ->
+        {:error, "Password must contain at least one uppercase letter"}
+
+      not String.match?(password, ~r/[a-z]/) ->
+        {:error, "Password must contain at least one lowercase letter"}
+
+      not String.match?(password, ~r/[0-9]/) ->
+        {:error, "Password must contain at least one number"}
+
+      true ->
+        :ok
+    end
+  end
+
+  @doc """
+  Updates user's last login timestamp.
+  """
+  def update_last_login(%User{} = user) do
+    now = DateTime.truncate(DateTime.utc_now(), :second)
+    user
+    |> Ecto.Changeset.change(last_login_at: now)
+    |> Repo.update()
   end
 end

@@ -14,10 +14,32 @@ defmodule PrzmaWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :auth_required do
+    plug PrzmaWeb.Plugs.AuthRequired
+  end
+
   scope "/", PrzmaWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    # Public routes
+    live "/", HomeLive, :index
+    live "/auth", AuthLive, :index
+    live "/welcome", WelcomeLive, :index
+  end
+
+  # API routes
+  scope "/api", PrzmaWeb do
+    pipe_through :api
+
+    # Auth API endpoints
+    # post "/auth/login", AuthController, :login
+    # post "/auth/logout", AuthController, :logout
+    # post "/auth/refresh", AuthController, :refresh_token
+
+    # User API endpoints (protected)
+    pipe_through :auth_required
+    # resources "/users", UserController, except: [:new, :edit]
+    # get "/users/search", UserController, :search
   end
 
   # Other scopes may use custom stacks.
