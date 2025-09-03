@@ -295,7 +295,7 @@ defmodule PrzmaWeb.AuthLive do
         # Generate OTP code and expiry
         code = :rand.uniform(899_999) + 100_000 |> Integer.to_string()
         now = DateTime.truncate(DateTime.utc_now(), :second)
-        expires_at = DateTime.add(now, 60) # 5 minutes
+        expires_at = DateTime.add(now, 30) # 5 minutes
 
         # Update user with OTP
         case Accounts.update_user_otp(user, code, expires_at) do

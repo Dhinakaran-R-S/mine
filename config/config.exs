@@ -25,6 +25,12 @@ config :przma, PrzmaWeb.Endpoint,
   ],
   pubsub_server: Przma.PubSub,
   live_view: [signing_salt: "M7iYafCI"]
+    config :przma, Przma.Mailer,
+  adapter: Swoosh.Adapters.Mailgun,
+  api_key: "258affb20f6f928822e171ebcd137c33-16bc1610-75fe5e60",
+  domain: "sandbox9f49599cc4134403aa6beaef83a7ce80.mailgun.org"
+
+config :swoosh, :api_client, Swoosh.ApiClient.Finch
 
 # Configures the mailer
 #
@@ -68,3 +74,10 @@ config :phoenix, :json_library, Jason
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
+# mail
+ config :przma, VideoApp.Mailer,
+  adapter: Swoosh.Adapters.Mailgun,
+  api_key: "258affb20f6f928822e171ebcd137c33-16bc1610-75fe5e60",
+  domain: "sandbox9f49599cc4134403aa6beaef83a7ce80.mailgun.org"
+
+config :swoosh, :api_client, Swoosh.ApiClient.Finch

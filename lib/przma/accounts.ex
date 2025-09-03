@@ -180,12 +180,12 @@ defmodule Przma.Accounts do
   Updates user with OTP code and expiry.
   """
   def update_user_otp(%User{} = user, code, expires_at) do
-    user
-    |> Ecto.Changeset.change(%{
+    attrs = %{
       otp_code: code,
       otp_expires_at: expires_at,
       otp_used: false
-    })
+    }
+
     user
     |> User.otp_changeset(attrs)
     |> Repo.update()
@@ -239,11 +239,7 @@ defmodule Przma.Accounts do
   """
   def mark_otp_used(%User{} = user) do
     user
-    |> Ecto.Changeset.change(%{
-      otp_used: true,
-      otp_code: nil,
-      otp_expires_at: nil
-    })
+    |> User.mark_otp_used_changeset()
     |> Repo.update()
   end
 
@@ -252,7 +248,7 @@ defmodule Przma.Accounts do
   """
   def verify_user(%User{} = user) do
     user
-    |> Ecto.Changeset.change(%{is_verified: true})
+    |> User.verify_user_changeset()
     |> Repo.update()
   end
 
