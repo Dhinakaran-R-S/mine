@@ -33,6 +33,9 @@ defmodule Przma.MixProject do
   defp deps do
     [
       {:phoenix, "~> 1.7.21"},
+      {:phoenix_ecto, "~> 4.5"},
+      {:ecto_sql, "~> 3.10"},
+      {:postgrex, ">= 0.0.0"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.0"},
@@ -55,13 +58,10 @@ defmodule Przma.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.1.1"},
       {:bandit, "~> 1.5"},
-      {:ecto_sql, "~> 3.10"},
-      {:postgrex, ">= 0.0.0"},
       {:hackney, "~> 1.20"},
       {:pbkdf2_elixir, "~> 2.0"},
-      {:ecto_network, "~> 1.5"},
       {:multipart, "~> 0.4.0"},
-      {:plug,"~> 1.15"}
+      {:plug, "~> 1.15"}
 
     ]
   end

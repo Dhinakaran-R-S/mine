@@ -330,4 +330,176 @@ defmodule Przma.Accounts do
       user -> resend_otp(user)
     end
   end
+
+ # ------------------------
+  # Password Reset Functions
+  # ------------------------
+
+  @doc """
+  Generates a reset token for password reset.
+  """
+  def generate_reset_token(%User{} = user) do
+    raw_token =
+      :crypto.strong_rand_bytes(32)
+      |> Base.url_encode64(padding: false)
+
+    hashed_token =
+      :crypto.hash(:sha256, raw_token)
+      |> Base.encode16(case: :lower)
+
+    sent_at = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    changeset =
+      user
+      |> User.reset_token_changeset(%{
+        reset_password_token: hashed_token,
+        reset_password_sent_at: sent_at
+      })
+
+    case Repo.update(changeset) do
+      {:ok, updated_user} -> {:ok, raw_token, updated_user}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  @doc """
+  Validates a reset token and returns the user if valid.
+  """
+  def validate_reset_token(token) when is_binary(token) do
+    hashed_token =
+      :crypto.hash(:sha256, token)
+      |> Base.encode16(case: :lower)
+
+    case Repo.get_by(User, reset_password_token: hashed_token) do
+      nil ->
+        {:error, :invalid_token}
+
+      %User{deleted_at: deleted_at} when not is_nil(deleted_at) ->
+        {:error, :account_deactivated}
+
+      user ->
+        now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+        if user.reset_password_sent_at && NaiveDateTime.diff(now, user.reset_password_sent_at) <= 3600 do
+          {:ok, user}
+        else
+          {:error, :expired_token}
+        end
+    end
+  end
+
+  @doc """
+  Resets user password using a valid token.
+  """
+  def reset_password(token, new_password) when is_binary(token) and is_binary(new_password) do
+    with {:ok, user} <- validate_reset_token(token) do
+      changeset = User.reset_password_changeset(user, %{password: new_password})
+
+      case Repo.update(changeset) do
+        {:ok, updated_user} ->
+          # Update password_changed_at timestamp
+          now = DateTime.truncate(DateTime.utc_now(), :second)
+          updated_user
+          |> Ecto.Changeset.change(password_changed_at: now)
+          |> Repo.update()
+
+        {:error, changeset} = error ->
+          error
+      end
+    end
+  end
+
+  @doc """
+  Creates a changeset for forgot password email form.
+  """
+  def change_forgot_password_email(attrs \\ %{}) do
+    data = %{"email" => ""}
+    types = %{email: :string}
+
+    {data, types}
+    |> Ecto.Changeset.cast(attrs, Map.keys(types))
+    |> Ecto.Changeset.validate_required([:email])
+    |> Ecto.Changeset.validate_format(:email, ~r/^[^\s]+@[^\s]+\.[^\s]+$/, message: "must be a valid email")
+  end
+
+  @doc """
+  Sends password reset email to user.
+  """
+  def send_reset_password_email(%User{} = user, reset_token) do
+    reset_url = "http://localhost:4000/reset_password/#{reset_token}"
+
+    # Create email using Swoosh
+    email =
+      Swoosh.Email.new()
+      |> Swoosh.Email.from({"Przma", "no-reply@przma.com"})
+      |> Swoosh.Email.to(user.email)
+      |> Swoosh.Email.subject("Reset Your Password - Przma")
+      |> Swoosh.Email.html_body("""
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2>Password Reset Request</h2>
+        <p>Hello #{user.first_name},</p>
+        <p>We received a request to reset your password for your Przma account.</p>
+
+        <div style="background-color: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px; text-align: center;">
+          <p style="margin-bottom: 15px;">Click the button below to reset your password:</p>
+          <a href="#{reset_url}"
+             style="display: inline-block; padding: 12px 24px; background-color: #4f46e5; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
+            Reset Password
+          </a>
+        </div>
+
+        <p>Or copy and paste this link in your browser:</p>
+        <p style="word-break: break-all; color: #4f46e5;"><a href="#{reset_url}">#{reset_url}</a></p>
+
+        <p><strong>This link expires in 1 hour.</strong></p>
+
+        <p>If you didn't request a password reset, please ignore this email or contact support if you have concerns.</p>
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="color: #666; font-size: 14px;">
+          This is an automated message from Przma. Please do not reply to this email.
+        </p>
+      </div>
+      """)
+
+    # Send email
+    case Przma.Mailer.deliver(email) do
+      {:ok, _response} ->
+        IO.puts("Reset password email sent successfully to #{user.email}")
+        :ok
+      {:error, reason} ->
+        IO.puts("Failed to send reset password email: #{inspect(reason)}")
+        {:error, reason}
+    end
+  rescue
+    error ->
+      IO.puts("Error sending reset password email: #{inspect(error)}")
+      {:error, error}
+  end
+
+  @doc """
+  Initiates password reset process for a given email.
+  """
+  def initiate_password_reset(email) when is_binary(email) do
+    case get_user_by_email(email) do
+      nil ->
+        # Don't reveal if email exists or not for security
+        {:ok, :email_sent}
+
+      %User{deleted_at: deleted_at} when not is_nil(deleted_at) ->
+        {:error, :account_deactivated}
+
+      %User{} = user ->
+        case generate_reset_token(user) do
+          {:ok, token, updated_user} ->
+            case send_reset_password_email(updated_user, token) do
+              :ok -> {:ok, :email_sent}
+              {:error, _reason} -> {:error, :email_failed}
+            end
+
+          {:error, _changeset} ->
+            {:error, :token_generation_failed}
+        end
+    end
+  end
+
 end

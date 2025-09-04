@@ -106,6 +106,15 @@ defmodule PrzmaWeb.AuthLive do
               </div>
             </div>
 
+             <!-- Forgot password link -->
+              <div class="flex items-center justify-between">
+              <div class="text-sm">
+                <.link navigate={~p"/forgot_password"} class="text-indigo-600 hover:text-indigo-800 hover:underline transition-colors">
+                  Forgot your password?
+                </.link>
+              </div>
+            </div>
+
             <div>
               <button
                 type="submit"

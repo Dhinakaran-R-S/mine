@@ -22,6 +22,9 @@ defmodule Przma.Accounts.User do
     field :otp_expires_at, :utc_datetime
     field :otp_used, :boolean, default: false
 
+    field :reset_password_token, :string
+    field :reset_password_sent_at, :naive_datetime
+
     # Add these essential fields from the second version
     field :is_active, :boolean, default: true
     field :is_verified, :boolean, default: false
@@ -125,5 +128,62 @@ defmodule Przma.Accounts.User do
   # Optional: Add password confirmation validation
   defp validate_password_confirmation(changeset) do
     validate_confirmation(changeset, :password, message: "does not match password")
+  end
+
+  @doc false
+  def reset_password_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:password])
+    |> validate_required([:password])
+    |> validate_length(:password, min: 8, max: 72)
+    |> validate_password_strength()  # Use existing validation
+    |> put_password_hash()
+    |> clear_reset_token()  # Clear the reset token after successful reset
+  end
+
+  def reset_token_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:reset_password_token, :reset_password_sent_at])
+    |> validate_required([:reset_password_token, :reset_password_sent_at])
+  end
+
+  # Clear reset token and timestamp
+  defp clear_reset_token(changeset) do
+    changeset
+    |> put_change(:reset_password_token, nil)
+    |> put_change(:reset_password_sent_at, nil)
+  end
+
+  # Add password strength validation
+  defp validate_password_strength(changeset) do
+    password = get_change(changeset, :password)
+
+    if password do
+      case validate_password_requirements(password) do
+        :ok -> changeset
+        {:error, message} -> add_error(changeset, :password, message)
+      end
+    else
+      changeset
+    end
+  end
+
+  defp validate_password_requirements(password) do
+    cond do
+      String.length(password) < 8 ->
+        {:error, "must be at least 8 characters long"}
+
+      not String.match?(password, ~r/[A-Z]/) ->
+        {:error, "must contain at least one uppercase letter"}
+
+      not String.match?(password, ~r/[a-z]/) ->
+        {:error, "must contain at least one lowercase letter"}
+
+      not String.match?(password, ~r/[0-9]/) ->
+        {:error, "must contain at least one number"}
+
+      true ->
+        :ok
+    end
   end
 end

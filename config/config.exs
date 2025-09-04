@@ -25,10 +25,12 @@ config :przma, PrzmaWeb.Endpoint,
   ],
   pubsub_server: Przma.PubSub,
   live_view: [signing_salt: "M7iYafCI"]
+
+
     config :przma, Przma.Mailer,
   adapter: Swoosh.Adapters.Mailgun,
-  api_key: "258affb20f6f928822e171ebcd137c33-16bc1610-75fe5e60",
-  domain: "sandbox9f49599cc4134403aa6beaef83a7ce80.mailgun.org"
+  api_key: "2c34ae6553aa771a6fca1144c0079a6a-1ae02a08-9f9aaff2",
+  domain: "sandbox65ce9b12ed8a46c884a1064ffd7e4e6f.mailgun.org"
 
 config :swoosh, :api_client, Swoosh.ApiClient.Finch
 
@@ -39,7 +41,7 @@ config :swoosh, :api_client, Swoosh.ApiClient.Finch
 #
 # For production it's recommended to configure a different adapter
 # at the `config/runtime.exs`.
-config :przma, Przma.Mailer, adapter: Swoosh.Adapters.Local
+# config :przma, Przma.Mailer, adapter: Swoosh.Adapters.Local
 
 # Configure esbuild (the version is required)
 config :esbuild,

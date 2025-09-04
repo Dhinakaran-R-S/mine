@@ -26,6 +26,8 @@ defmodule PrzmaWeb.Router do
     live "/auth", AuthLive, :index
     live "/welcome", WelcomeLive, :index
     live "/otp_verify/:user_id", OTPVerifyLive, :show
+    live "/forgot_password", ForgotPasswordLive
+    live "/reset_password/:token", ResetPasswordLive
   end
 
   # API routes
