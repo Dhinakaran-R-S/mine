@@ -1,3 +1,4 @@
+# lib/przma/accounts/user.ex
 defmodule Przma.Accounts.User do
   use Ecto.Schema
   import Ecto.Changeset
@@ -6,6 +7,9 @@ defmodule Przma.Accounts.User do
   @primary_key {:user_id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   @schema_prefix "auth"
+
+  # Define user roles
+  @valid_roles ["user", "superadmin"]
 
   schema "users" do
     field :first_name, :string
@@ -17,6 +21,8 @@ defmodule Przma.Accounts.User do
     field :password_hash, :string
     field :deleted_at, :utc_datetime
 
+    # Role field - NEW
+    field :role, :string, default: "user"
 
     field :otp_code, :string
     field :otp_expires_at, :utc_datetime
@@ -25,7 +31,6 @@ defmodule Przma.Accounts.User do
     field :reset_password_token, :string
     field :reset_password_sent_at, :naive_datetime
 
-    # Add these essential fields from the second version
     field :is_active, :boolean, default: true
     field :is_verified, :boolean, default: false
     field :auth_provider, :string, default: "local"
@@ -41,19 +46,33 @@ defmodule Przma.Accounts.User do
   @doc false
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [:first_name, :last_name, :email, :username, :password, :password_confirmation])
+    |> cast(attrs, [:first_name, :last_name, :email, :username, :password, :password_confirmation, :role])
     |> validate_required([:first_name, :last_name, :email, :password, :password_confirmation])
     |> validate_length(:first_name, min: 1, max: 100)
     |> validate_length(:last_name, min: 1, max: 100)
     |> validate_length(:password, min: 8, max: 72)
     |> validate_password_confirmation()
+    |> validate_inclusion(:role, @valid_roles, message: "must be one of: #{Enum.join(@valid_roles, ", ")}")
     |> put_username_if_nil()
     |> put_password_hash()
     |> validate_email()
     |> put_default_values()
   end
 
-    @doc """
+  # Admin changeset - for superadmin login (no registration)
+  def admin_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:first_name, :last_name, :email, :username, :password_hash, :role])
+    |> validate_required([:first_name, :last_name, :email, :password_hash])
+    |> validate_inclusion(:role, @valid_roles)
+    |> validate_email()
+    |> put_change(:is_verified, true)
+    |> put_change(:is_active, true)
+    |> put_change(:auth_provider, "local")
+    |> put_change(:failed_login_attempts, 0)
+  end
+
+  @doc """
   Changeset specifically for OTP updates
   """
   def otp_changeset(user, attrs) do
@@ -82,6 +101,31 @@ defmodule Przma.Accounts.User do
     |> put_change(:is_verified, true)
   end
 
+  # Role checking functions
+  @doc """
+  Check if user is superadmin
+  """
+  def superadmin?(%__MODULE__{role: "superadmin"}), do: true
+  def superadmin?(_), do: false
+
+  @doc """
+  Check if user is normal user
+  """
+  def user?(%__MODULE__{role: "user"}), do: true
+  def user?(_), do: false
+
+  @doc """
+  Get user role display name
+  """
+  def role_display(%__MODULE__{role: "superadmin"}), do: "Super Administrator"
+  def role_display(%__MODULE__{role: "user"}), do: "User"
+  def role_display(_), do: "Unknown"
+
+  @doc """
+  Get all valid roles
+  """
+  def valid_roles, do: @valid_roles
+
   defp validate_email(changeset) do
     changeset
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+\.[^\s]+$/, message: "must be a valid email")
@@ -91,12 +135,10 @@ defmodule Przma.Accounts.User do
     |> unique_constraint(:email)
   end
 
-  # Auto-generate username if nil - FIXED THE TYPO
   defp put_username_if_nil(changeset) do
     if get_field(changeset, :username) == nil do
       first_name = get_field(changeset, :first_name) || "user"
       last_name = get_field(changeset, :last_name) || "unknown"
-      # Fixed: firstname -> first_name
       username = String.downcase("#{first_name}#{last_name}")
       put_change(changeset, :username, username)
     else
@@ -104,7 +146,6 @@ defmodule Przma.Accounts.User do
     end
   end
 
-  # Hash password using pbkdf2_elixir - SIMPLIFIED
   defp put_password_hash(changeset) do
     if password = get_change(changeset, :password) do
       changeset
@@ -116,16 +157,14 @@ defmodule Przma.Accounts.User do
     end
   end
 
-  # Add default values
   defp put_default_values(changeset) do
     changeset
     |> put_change(:is_active, true)
-    |> put_change(:is_verified, false)
+    |> put_change(:is_verified, get_change(changeset, :role) == "superadmin") # Auto-verify superadmins
     |> put_change(:auth_provider, "local")
     |> put_change(:failed_login_attempts, 0)
   end
 
-  # Optional: Add password confirmation validation
   defp validate_password_confirmation(changeset) do
     validate_confirmation(changeset, :password, message: "does not match password")
   end
@@ -136,9 +175,9 @@ defmodule Przma.Accounts.User do
     |> cast(attrs, [:password])
     |> validate_required([:password])
     |> validate_length(:password, min: 8, max: 72)
-    |> validate_password_strength()  # Use existing validation
+    |> validate_password_strength()
     |> put_password_hash()
-    |> clear_reset_token()  # Clear the reset token after successful reset
+    |> clear_reset_token()
   end
 
   def reset_token_changeset(user, attrs) do
@@ -147,14 +186,12 @@ defmodule Przma.Accounts.User do
     |> validate_required([:reset_password_token, :reset_password_sent_at])
   end
 
-  # Clear reset token and timestamp
   defp clear_reset_token(changeset) do
     changeset
     |> put_change(:reset_password_token, nil)
     |> put_change(:reset_password_sent_at, nil)
   end
 
-  # Add password strength validation
   defp validate_password_strength(changeset) do
     password = get_change(changeset, :password)
 

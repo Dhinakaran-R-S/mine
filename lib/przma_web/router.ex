@@ -1,3 +1,4 @@
+# lib/przma_web/router.ex
 defmodule PrzmaWeb.Router do
   use PrzmaWeb, :router
 
@@ -14,41 +15,45 @@ defmodule PrzmaWeb.Router do
     plug :accepts, ["json"]
   end
 
-  pipeline :auth_required do
-    plug PrzmaWeb.Plugs.AuthRequired
-  end
-
+  # Public routes (no authentication required)
   scope "/", PrzmaWeb do
     pipe_through :browser
 
-    # Public routes
-    live "/", HomeLive, :index
+    # Authentication routes
     live "/auth", AuthLive, :index
-    live "/welcome", WelcomeLive, :index
+    live "/forgot_password", ForgotPasswordLive, :index
+    live "/reset_password/:token", ResetPasswordLive, :show
     live "/otp_verify/:user_id", OTPVerifyLive, :show
-    live "/forgot_password", ForgotPasswordLive
-    live "/reset_password/:token", ResetPasswordLive
+
+    # Redirect root to auth
+    get "/", PageController, :home
+    # Or you can redirect directly to auth:
+    # live "/", AuthLive, :index
   end
 
-  # API routes
+  # Protected routes - require valid session
+  scope "/", PrzmaWeb do
+    pipe_through :browser
+
+    # User dashboard (for regular users and superadmins)
+    live "/welcome", WelcomeLive, :index
+
+    # Admin-only routes
+    live "/admin/dashboard", AdminDashboardLive, :index
+
+    # You can add more admin routes here like:
+    # live "/admin/users", AdminUsersLive, :index
+    # live "/admin/users/:id", AdminUserDetailLive, :show
+    # live "/admin/settings", AdminSettingsLive, :index
+  end
+
+  # API routes (if needed)
   scope "/api", PrzmaWeb do
     pipe_through :api
 
-    # Auth API endpoints
-    # post "/auth/login", AuthController, :login
-    # post "/auth/logout", AuthController, :logout
-    # post "/auth/refresh", AuthController, :refresh_token
-
-    # User API endpoints (protected)
-    pipe_through :auth_required
-    # resources "/users", UserController, except: [:new, :edit]
-    # get "/users/search", UserController, :search
+    # Add API routes here if needed
+    # For example, for mobile apps or external integrations
   end
-
-  # Other scopes may use custom stacks.
-  # scope "/api", PrzmaWeb do
-  #   pipe_through :api
-  # end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development
   if Application.compile_env(:przma, :dev_routes) do

@@ -1,7 +1,7 @@
 # lib/przma/accounts.ex
 defmodule Przma.Accounts do
   @moduledoc """
-  The Accounts context for managing users.
+  The Accounts context for managing users with RBAC.
   """
 
   import Ecto.Query, warn: false
@@ -13,6 +13,13 @@ defmodule Przma.Accounts do
   """
   def list_users do
     Repo.all(from u in User, where: is_nil(u.deleted_at))
+  end
+
+  @doc """
+  Returns the list of users by role.
+  """
+  def list_users_by_role(role) when role in ["user", "superadmin"] do
+    Repo.all(from u in User, where: is_nil(u.deleted_at) and u.role == ^role)
   end
 
   @doc """
@@ -40,11 +47,29 @@ defmodule Przma.Accounts do
   end
 
   @doc """
-  Creates a user.
+  Creates a user (normal users only - no superadmin registration).
   """
   def create_user(attrs \\ %{}) do
+    # Force role to be "user" for normal registration
+    attrs = Map.put(attrs, "role", "user")
+
     %User{}
     |> User.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Creates a superadmin user (for seeding/admin purposes only).
+  """
+  def create_superadmin(attrs \\ %{}) do
+    attrs =
+      attrs
+      |> Map.put("role", "superadmin")
+      |> Map.put("is_verified", true)
+      |> Map.put("is_active", true)
+
+    %User{}
+    |> User.admin_changeset(attrs)
     |> Repo.insert()
   end
 
@@ -119,7 +144,19 @@ defmodule Przma.Accounts do
   end
 
   @doc """
+  Get active users count by role.
+  """
+  def get_active_users_count_by_role(role) do
+    Repo.aggregate(
+      from(u in User, where: is_nil(u.deleted_at) and u.role == ^role),
+      :count,
+      :user_id
+    )
+  end
+
+  @doc """
   Authenticates a user with email and password.
+  Enhanced with role-based logic.
   """
   def authenticate_user(email, password) when is_binary(email) and is_binary(password) do
     case get_user_by_email(email) do
@@ -133,7 +170,18 @@ defmodule Przma.Accounts do
 
       %User{} = user ->
         if Pbkdf2.verify_pass(password, user.password_hash) do
-          {:ok, user}
+          case user.role do
+            "superadmin" ->
+              # Superadmins don't need email verification
+              {:ok, user}
+            "user" ->
+              # Regular users must be verified
+              if user.is_verified do
+                {:ok, user}
+              else
+                {:error, :email_not_verified}
+              end
+          end
         else
           {:error, :invalid_credentials}
         end
@@ -172,6 +220,32 @@ defmodule Przma.Accounts do
     |> Repo.update()
   end
 
+  # Authorization functions for RBAC
+
+  @doc """
+  Check if user can access admin features.
+  """
+  def can_access_admin?(%User{role: "superadmin"}), do: true
+  def can_access_admin?(_), do: false
+
+  @doc """
+  Check if user can manage other users.
+  """
+  def can_manage_users?(%User{role: "superadmin"}), do: true
+  def can_manage_users?(_), do: false
+
+  @doc """
+  Check if user can delete users.
+  """
+  def can_delete_users?(%User{role: "superadmin"}), do: true
+  def can_delete_users?(_), do: false
+
+  @doc """
+  Check if user can view system settings.
+  """
+  def can_view_system_settings?(%User{role: "superadmin"}), do: true
+  def can_view_system_settings?(_), do: false
+
   # ------------------------
   # OTP Functions for User Table
   # ------------------------
@@ -197,7 +271,7 @@ defmodule Przma.Accounts do
   def generate_and_update_otp(%User{} = user) do
     code = :rand.uniform(899_999) + 100_000 |> Integer.to_string()
     now = DateTime.truncate(DateTime.utc_now(), :second)
-    otp_expires_at = DateTime.add(now, 60) # 5 minutes
+    otp_expires_at = DateTime.add(now, 300) # 5 minutes
 
     update_user_otp(user, code, otp_expires_at)
   end
@@ -331,7 +405,7 @@ defmodule Przma.Accounts do
     end
   end
 
- # ------------------------
+  # ------------------------
   # Password Reset Functions
   # ------------------------
 
@@ -501,5 +575,4 @@ defmodule Przma.Accounts do
         end
     end
   end
-
 end

@@ -134,6 +134,7 @@ defmodule PrzmaWeb.AuthLive do
 
         <!-- Register Form -->
         <div :if={@current_tab == "register"} class="mt-8 space-y-6">
+
           <.form for={@register_form} phx-submit="register_submit" class="space-y-6">
             <div class="grid grid-cols-2 gap-4">
               <div>
@@ -253,32 +254,22 @@ defmodule PrzmaWeb.AuthLive do
 
     case Accounts.authenticate_user(email, password) do
       {:ok, user} ->
-        # Check if user is verified
-        if user.is_verified do
-          # Update last login
-          Accounts.update_last_login(user)
+        # Handle role-based authentication logic
+        case user.role do
+          "superadmin" ->
+            # Superadmins don't need email verification
+            handle_successful_login(user, socket)
 
-          # Create simple session
-          case Sessions.create_user_session(user.user_id) do
-            {:ok, session} ->
-              # Redirect to welcome with token in URL
+          "user" ->
+            # Regular users must be verified
+            if user.is_verified do
+              handle_successful_login(user, socket)
+            else
               {:noreply,
                socket
-               |> put_flash(:info, "Login successful!")
-               |> assign(:loading, false)
-               |> push_navigate(to: ~p"/welcome?token=#{session.refresh_token}&user_id=#{user.user_id}")}
-
-            {:error, _changeset} ->
-              {:noreply,
-               socket
-               |> assign(:errors, ["Failed to create session. Please try again."])
+               |> assign(:errors, ["Please verify your email before logging in. Check your email for the OTP."])
                |> assign(:loading, false)}
-          end
-        else
-          {:noreply,
-           socket
-           |> assign(:errors, ["Please verify your email before logging in. Check your email for the OTP."])
-           |> assign(:loading, false)}
+            end
         end
 
       {:error, :invalid_credentials} ->
@@ -292,6 +283,12 @@ defmodule PrzmaWeb.AuthLive do
          socket
          |> assign(:errors, ["Account has been deactivated"])
          |> assign(:loading, false)}
+
+      {:error, :email_not_verified} ->
+        {:noreply,
+         socket
+         |> assign(:errors, ["Please verify your email before logging in. Check your email for the OTP."])
+         |> assign(:loading, false)}
     end
   end
 
@@ -304,7 +301,7 @@ defmodule PrzmaWeb.AuthLive do
         # Generate OTP code and expiry
         code = :rand.uniform(899_999) + 100_000 |> Integer.to_string()
         now = DateTime.truncate(DateTime.utc_now(), :second)
-        expires_at = DateTime.add(now, 30) # 5 minutes
+        expires_at = DateTime.add(now, 300) # 5 minutes
 
         # Update user with OTP
         case Accounts.update_user_otp(user, code, expires_at) do
@@ -314,7 +311,7 @@ defmodule PrzmaWeb.AuthLive do
 
             {:noreply,
              socket
-             |> put_flash(:info, "Account created! OTP sent to your email for verification.")
+             |> put_flash(:info, "User account created! OTP sent to your email for verification.")
              |> assign(:loading, false)
              |> push_navigate(to: ~p"/otp_verify/#{user.user_id}")}
 
@@ -334,17 +331,45 @@ defmodule PrzmaWeb.AuthLive do
     end
   end
 
+  # Private helper function for successful login
+  defp handle_successful_login(user, socket) do
+    # Update last login
+    Accounts.update_last_login(user)
+
+    # Create session
+    case Sessions.create_user_session(user.user_id) do
+      {:ok, session} ->
+        # Determine redirect based on role
+        redirect_path = case user.role do
+          "superadmin" -> ~p"/admin/dashboard?token=#{session.refresh_token}&user_id=#{user.user_id}"
+          "user" -> ~p"/welcome?token=#{session.refresh_token}&user_id=#{user.user_id}"
+        end
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Login successful!")
+         |> assign(:loading, false)
+         |> push_navigate(to: redirect_path)}
+
+      {:error, _changeset} ->
+        {:noreply,
+         socket
+         |> assign(:errors, ["Failed to create session. Please try again."])
+         |> assign(:loading, false)}
+    end
+  end
+
   # Private helper functions
-defp extract_changeset_errors(changeset) do
-  Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-    Enum.reduce(opts, msg, fn {key, value}, acc ->
-      String.replace(acc, "%{#{key}}", to_string(value))
+  defp extract_changeset_errors(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", to_string(value))
+      end)
     end)
-  end)
-  |> Enum.flat_map(fn {field, errors} ->
-    Enum.map(errors, fn error ->
-      "#{Phoenix.Naming.humanize(field)} #{error}"
+    |> Enum.flat_map(fn {field, errors} ->
+      Enum.map(errors, fn error ->
+        "#{Phoenix.Naming.humanize(field)} #{error}"
+      end)
     end)
-  end)
-end
+  end
 end

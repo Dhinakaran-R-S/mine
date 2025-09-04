@@ -11,7 +11,7 @@ defmodule Przma.Sessions.Session do
     field :refresh_token, :string
     field :token_hash, :string
     field :status, :string, default: "active"
-    # field :ip_address, EctoNetwork.INET
+    field :ip_address, EctoNetwork.INET
     field :user_agent, :string
     field :device_id, :string
     field :location_data, :map
